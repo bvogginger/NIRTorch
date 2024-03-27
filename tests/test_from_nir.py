@@ -49,6 +49,10 @@ def _recurrent_model_map(m: nir.NIRNode, device: str = "cpu") -> torch.nn.Module
             raise NotImplementedError(f"Unsupported module {m}")
 
 
+def _dummy_model_map(m: nir.NIRNode) -> torch.nn.Module:
+    pass
+
+
 def test_extract_empty():
     g = nir.NIRGraph({}, [])
     with pytest.raises(ValueError):
@@ -156,3 +160,14 @@ def test_import_braille():
     g = nir.read("tests/braille.nir")
     m = load(g, _recurrent_model_map)
     assert m(torch.empty(1, 12))[0].shape == (1, 7)
+
+
+def test_load_torch_nn_primitives():
+    g = nir.NIRGraph(
+        nodes={
+            "i": nir.Input(np.array([10, 20])),
+            "f": nir.Flatten(np.array([1])),
+        },
+        edges=[("i", "f")],
+    )  # Mock node
+    _ = load(g, _dummy_model_map, return_state=False)
