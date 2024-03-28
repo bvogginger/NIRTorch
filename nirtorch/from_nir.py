@@ -191,10 +191,32 @@ def _to_tensor(tensor: Union[np.ndarray, torch.Tensor]):
 
 
 def _switch_default_models(node: nir.NIRNode) -> Optional[torch.nn.Module]:
+    """Convert a NIR node into the corresponding torch module.
+
+    This function converts the NIR nodes that can be converted into default
+    `torch.nn` modules.
+
+    Currently supported conversions:
+        nir.Input -> nn.Identity
+        nir.Output -> nn.Identity
+        nir.Conv1d -> nn.Conv1d
+        nir.Conv2d -> nn.Conv2d
+        nir.Flatten -> nn.Flatten
+        nir.Linear -> nn.Linear without bias
+        nir.Affine -> nn.Linear with bias
+        nir.AvgPool2d -> nn.AvgPool2d
+        nir.SumPool2d -> nn.AvgPool2d with divisor_override=1
+
+    Args:
+        node: The NIR node
+
+    Returns:
+        The torch module or None.
+    """
     if isinstance(node, nir.Input) or isinstance(node, nir.Output):
         return torch.nn.Identity()
 
-    if isinstance(node, nir.Affine):
+    elif isinstance(node, nir.Affine):
         has_bias = node.bias is not None
         module = torch.nn.Linear(
             node.weight.shape[1], node.weight.shape[0], bias=has_bias
@@ -204,7 +226,7 @@ def _switch_default_models(node: nir.NIRNode) -> Optional[torch.nn.Module]:
             module.bias.data = _to_tensor(node.bias)
         return module
 
-    if isinstance(node, nir.Conv1d):
+    elif isinstance(node, nir.Conv1d):
         module = torch.nn.Conv1d(
             in_channels=node.weight.shape[1],
             out_channels=node.weight.shape[0],
@@ -218,7 +240,7 @@ def _switch_default_models(node: nir.NIRNode) -> Optional[torch.nn.Module]:
         module.bias.data = _to_tensor(node.bias)
         return module
 
-    if isinstance(node, nir.Conv2d):
+    elif isinstance(node, nir.Conv2d):
         module = torch.nn.Conv2d(
             in_channels=node.weight.shape[1],
             out_channels=node.weight.shape[0],
@@ -232,22 +254,22 @@ def _switch_default_models(node: nir.NIRNode) -> Optional[torch.nn.Module]:
         module.bias.data = _to_tensor(node.bias)
         return module
 
-    if isinstance(node, nir.Flatten):
+    elif isinstance(node, nir.Flatten):
         return torch.nn.Flatten(node.start_dim, node.end_dim)
 
-    if isinstance(node, nir.Linear):
+    elif isinstance(node, nir.Linear):
         module = torch.nn.Linear(node.weight.shape[1], node.weight.shape[0], bias=False)
         module.weight.data = _to_tensor(node.weight)
         return module
 
-    if isinstance(node, nir.AvgPool2d):
+    elif isinstance(node, nir.AvgPool2d):
         return torch.nn.AvgPool2d(
             kernel_size=tuple(node.kernel_size),
             stride=tuple(node.stride),
             padding=tuple(node.padding),
         )
 
-    if isinstance(node, nir.SumPool2d):
+    elif isinstance(node, nir.SumPool2d):
         return torch.nn.AvgPool2d(
             kernel_size=tuple(node.kernel_size),
             stride=tuple(node.stride),

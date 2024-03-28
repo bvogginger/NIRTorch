@@ -3,9 +3,86 @@ from typing import Any, Callable, Optional, Sequence
 
 import nir
 import numpy as np
+import torch
 import torch.nn as nn
 
 from .graph import extract_torch_graph
+
+
+def _default_model_map(module: nn.Module) -> Optional[nir.NIRNode]:
+    """Convert a default torch.nn module into the corresponding NIR node.
+
+    This function covers standard torch.nn modules that can be converted into
+    NIR nodes.
+
+    Currently supported conversions:
+        nn.Conv1d -> nir.Conv1d
+        nn.Conv2d -> nir.Conv2d
+        nn.Flatten -> nir.Flatten
+        nn.Linear with bias -> nir.Affine
+        nn.Linear without bias -> nir.Linear
+        nn.AvgPool2d -> nir.AvgPool2d
+
+    Args:
+        module: the torch.nn module
+
+    Returns:
+        The NIR node or None
+    """
+    if isinstance(module, nn.Conv1d):
+        return nir.Conv1d(
+            input_shape=None,
+            weight=module.weight.detach(),
+            bias=module.bias.detach(),
+            stride=module.stride,
+            padding=module.padding,
+            dilation=module.dilation,
+            groups=module.groups,
+        )
+
+    elif isinstance(module, nn.Conv2d):
+        return nir.Conv2d(
+            input_shape=None,
+            weight=module.weight.detach(),
+            bias=module.bias.detach(),
+            stride=module.stride,
+            padding=module.padding,
+            dilation=module.dilation,
+            groups=module.groups,
+        )
+
+    elif isinstance(module, nn.Flatten):
+        # Getting rid of the batch dimension for NIR
+        start_dim = module.start_dim - 1 if module.start_dim > 0 else module.start_dim
+        end_dim = module.end_dim - 1 if module.end_dim > 0 else module.end_dim
+        return nir.Flatten(
+            input_type=None,
+            start_dim=start_dim,
+            end_dim=end_dim,
+        )
+
+    elif isinstance(module, nn.Linear):
+        if module.bias is None:  # Add zero bias if none is present
+            return nir.Affine(
+                module.weight.detach(), torch.zeros(*module.weight.shape[:-1])
+            )
+        else:
+            return nir.Affine(module.weight.detach(), module.bias.detach())
+
+    elif isinstance(module, nn.AvgPool2d):
+        # NIR only supports the variables `kernel_size`, `stride` and `padding`
+        # All other variables need to have default values!
+        assert module.ceil_mode is False
+        assert module.count_include_pad is True
+        assert module.divisor_override is None
+
+        return nir.AvgPool2d(
+            kernel_size=module.kernel_size,  # (height, width)
+            stride=module.stride,  # (height, width)
+            padding=module.padding,  # (height, width)
+        )
+
+    return None
 
 
 def extract_nir_graph(
@@ -68,6 +145,11 @@ def extract_nir_graph(
     for indx, node in enumerate(torch_graph.node_list):
         # Convert the node type to NIR subgraph
         mapped_node = model_map(node.elem)
+        if mapped_node is None:
+            mapped_node = _default_model_map(node)
+
+        if mapped_node is None:
+            raise NotImplementedError(f"Module {type(node)} not supported")
 
         if isinstance(mapped_node, nir.NIRGraph):
             subgraph_keys.append(node.name)
