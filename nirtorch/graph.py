@@ -2,6 +2,7 @@ import warnings
 from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
+import brevitas
 import nir
 import torch
 import torch.nn as nn
@@ -159,7 +160,9 @@ class TorchGraph:
             else:
                 if isinstance(elem, Number):
                     elem = torch.as_tensor(elem)
-                if not isinstance(elem, torch.Tensor):
+                if not isinstance(
+                    elem, (torch.Tensor, brevitas.quant_tensor.QuantTensor)
+                ):
                     raise ValueError(f"Unknown element type {type(elem)}")
                 name = f"Tensor_{self.get_unique_tensor_id()}{tuple(elem.shape)}"
             # add and return the node
@@ -309,9 +312,9 @@ class TorchGraph:
         Returns:
             Graph: Returns a simplified graph with only modules in it
         """
-        return self.ignore_nodes(torch.Tensor)
+        return self.ignore_nodes((torch.Tensor, brevitas.quant_tensor.QuantTensor))
 
-    def ignore_nodes(self, class_type: Type) -> "TorchGraph":
+    def ignore_nodes(self, class_type: Tuple[Type, ...]) -> "TorchGraph":
         # Filter module names to remove the given class type
         new_module_names = {
             k: v for k, v in self.module_names.items() if not isinstance(k, class_type)
