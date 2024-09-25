@@ -51,6 +51,7 @@ def extract_nir_graph(
 
     if ignore_submodules_of is not None:
         torch_graph = torch_graph.ignore_submodules_of(ignore_submodules_of)
+        torch_graph._discover_inputs(torch_graph.get_edges())
 
     # Convert the nodes and get indices
     nir_edges = []
@@ -94,12 +95,9 @@ def extract_nir_graph(
         else:
             nir_nodes[node.name] = mapped_node
 
-        # Add edges from input, if first element
-        # TODO: Replace with mapping to input(s)/output(s) of subgraph
-        if indx == 0:  # TODO:
-            keys = list(nir_nodes.keys())
-            for k1, k2 in zip(keys[:-1], keys[1:]):
-                nir_edges.append((k1, k2))
+    # Add edges from input
+    for input_node in torch_graph.inputs:
+        nir_edges.append(("input", input_node.name))
 
     # Get all the edges
     for node in torch_graph.node_list:
